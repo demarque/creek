@@ -39,7 +39,7 @@ module Creek
         49 => :unsupported     # @
       }
 
-      DATE_SYSTEM_1900 = Date.new(1899, 12, 30)
+      DATE_SYSTEM_1900 = 25569 #Date.new(1899, 12, 30)
       DATE_SYSTEM_1904 = Date.new(1904, 1, 1)
     end
   end

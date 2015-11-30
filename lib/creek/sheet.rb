@@ -49,9 +49,24 @@ module Creek
     # Returns valid Excel column name for a given column index.
     # For example, returns "A" for 0, "B" for 1 and "AQ" for 42.
     def col_name i
-      quot = i/26
-      (quot>0 ? col_name(quot-1) : "") + (i%26+65).chr
+      i += 1
+      result = ""
+      mapping = ('A'..'Z').to_a
+      while i > 0
+        mod = (i - 1) % 26
+        result += mapping[mod]
+        i = (i - mod) / 26
+      end
+
+      result.reverse
     end
+
+    CELL = 'c'.freeze
+    ROW = 'row'.freeze
+    VALUE = 'v'.freeze
+    CELL_TYPE = 't'.freeze
+    STYLE_INDEX = 's'.freeze
+    CELL_REF = 'r'.freeze
 
     ##
     # Returns a hash per row that includes the cell ids and values.
@@ -64,26 +79,32 @@ module Creek
         opener = Nokogiri::XML::Reader::TYPE_ELEMENT
         closer = Nokogiri::XML::Reader::TYPE_END_ELEMENT
         Enumerator.new do |y|
-          shared, row, cells, cell = false, nil, {}, nil
+          row, cells, cell = nil, {}, nil
           cell_type  = nil
           cell_style_idx = nil
           @book.files.file.open(path) do |xml|
             Nokogiri::XML::Reader.from_io(xml).each do |node|
-              if (node.name.eql? 'row') and (node.node_type.eql? opener)
-                row = node.attributes
-                row['cells'] = Hash.new
-                cells = Hash.new
-                y << (include_meta_data ? row : cells) if node.self_closing?
-              elsif (node.name.eql? 'row') and (node.node_type.eql? closer)
-                processed_cells = fill_in_empty_cells(cells, row['r'], cell)
-                row['cells'] = processed_cells
-                y << (include_meta_data ? row : processed_cells)
-              elsif (node.name.eql? 'c') and (node.node_type.eql? opener)
-                cell_type      = node.attributes['t']
-                cell_style_idx = node.attributes['s']
-                cell           = node.attributes['r']
+              node_name = node.name
+              next unless node_name == CELL || node_name == ROW || node_name == VALUE
+              if node_name == ROW
+                case node.node_type
+                when opener then
+                  row = node.attributes
+                  row['cells'] = Hash.new
+                  cells = Hash.new
+                  y << (include_meta_data ? row : cells) if node.self_closing?
+                when closer
+                  processed_cells = fill_in_empty_cells(cells, row['r'], cell)
+                  row['cells'] = processed_cells
+                  y << (include_meta_data ? row : processed_cells)
+                end
+              elsif (node_name == CELL) && node.node_type == opener
+                attributes = node.attributes
+                cell_type      = attributes[CELL_TYPE]
+                cell_style_idx = attributes[STYLE_INDEX]
+                cell           = attributes[CELL_REF]
 
-              elsif (node.name.eql? 'v') and (node.node_type.eql? opener)
+              elsif node_name == VALUE && node.node_type == opener
                 if !cell.nil?
                   cells[cell] = convert(node.inner_xml, cell_type, cell_style_idx)
                 end
@@ -109,7 +130,6 @@ module Creek
     def fill_in_empty_cells cells, row_number, last_col
       new_cells = Hash.new
       unless cells.empty?
-        keys = cells.keys.sort
         last_col = last_col.gsub(row_number, '')
         last_col_index = @excel_col_names[last_col]
         [*(0..last_col_index)].each do |i|

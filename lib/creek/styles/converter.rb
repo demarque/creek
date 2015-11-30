@@ -77,18 +77,7 @@ module Creek
       # whether they actually contain a date, time, or datetime.
       def self.convert_date(value, options)
         value                        = value.to_f
-        days_since_date_system_start = value.to_i
-        fraction_of_24               = value - days_since_date_system_start
-
-        # http://stackoverflow.com/questions/10559767/how-to-convert-ms-excel-date-from-float-to-date-format-in-ruby
-        date = options.fetch(:base_date, DATE_SYSTEM_1900) + days_since_date_system_start
-
-        if fraction_of_24 > 0 # there is a time associated
-          seconds = (fraction_of_24 * 86400).round
-          return Time.utc(date.year, date.month, date.day) + seconds
-        else
-          return date
-        end
+        Time.at(((value - DATE_SYSTEM_1900) * 86400).round)
       end
 
       def self.convert_bignum(value)
