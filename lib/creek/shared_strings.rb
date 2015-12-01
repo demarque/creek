@@ -9,36 +9,41 @@ module Creek
 
     def initialize book
       @book = book
-      parse_shared_shared_strings
+      @dictionary = parse_shared_shared_strings
     end
 
     def parse_shared_shared_strings
       path = "xl/sharedStrings.xml"
       if @book.files.file.exist?(path)
-        doc = @book.files.file.open path
-        xml = Nokogiri::XML::Document.parse doc
-        parse_shared_string_from_document(xml)
-      end
-    end
-
-    def parse_shared_string_from_document(xml)
-      @dictionary = self.class.parse_shared_string_from_document(xml)
-    end
-
-    def self.parse_shared_string_from_document(xml)
-      dictionary = Hash.new
-
-      xml.css('si').each_with_index do |si, idx|
-        text_nodes = si.css('t')
-        if text_nodes.count == 1 # plain text node
-          dictionary[idx] = text_nodes.first.content
-        else # rich text nodes with text fragments
-          dictionary[idx] = text_nodes.map(&:content).join('')
+        @book.files.file.open(path) do |doc|
+          dictionary = []
+          buffer = false
+          str = nil
+          Nokogiri::XML::Reader.from_io(doc).each do |node|
+            case node.node_type
+            when Nokogiri::XML::Reader::TYPE_ELEMENT
+              case node.name
+              when 'si' then
+                str = ''
+              when 't' then
+                buffer = true
+              end
+            when Nokogiri::XML::Reader::TYPE_END_ELEMENT
+              case node.name
+              when 'si' then
+                dictionary << str
+                str = nil
+              when 't' then
+                buffer = false
+              end
+            when Nokogiri::XML::Reader::TYPE_TEXT
+              str << node.value if buffer
+            end
+          end
+          dictionary
         end
       end
-
-      dictionary
     end
-
   end
 end
+
