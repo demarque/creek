@@ -68,6 +68,7 @@ module Creek
     STYLE_INDEX = 's'.freeze
     CELL_REF = 'r'.freeze
     ROW_NUMBER = 'r'.freeze
+    TEXT = 't'.freeze
 
     ##
     # Returns a hash per row that includes the cell ids and values.
@@ -87,7 +88,7 @@ module Creek
           @book.files.file.open(path) do |xml|
             Nokogiri::XML::Reader.from_io(xml).each do |node|
               node_name = node.name
-              next unless node_name == CELL || node_name == ROW || node_name == VALUE
+              next unless node_name == CELL || node_name == ROW || node_name == VALUE || node_name == TEXT
               if node_name == ROW
                 case node.node_type
                 when opener then
@@ -110,6 +111,10 @@ module Creek
                 cell_style_idx = attributes[STYLE_INDEX]
                 cell           = attributes[CELL_REF]
               elsif node_name == VALUE && node.node_type == opener
+                if cell
+                  cells[@excel_col_names[cell.sub(row_number, '')]] = convert(node.inner_xml, cell_type, cell_style_idx)
+                end
+              elsif node_name == TEXT && node.node_type == opener
                 if cell
                   cells[@excel_col_names[cell.sub(row_number, '')]] = convert(node.inner_xml, cell_type, cell_style_idx)
                 end
