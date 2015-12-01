@@ -67,6 +67,7 @@ module Creek
     CELL_TYPE = 't'.freeze
     STYLE_INDEX = 's'.freeze
     CELL_REF = 'r'.freeze
+    ROW_NUMBER = 'r'.freeze
 
     ##
     # Returns a hash per row that includes the cell ids and values.
@@ -80,6 +81,7 @@ module Creek
         closer = Nokogiri::XML::Reader::TYPE_END_ELEMENT
         Enumerator.new do |y|
           row, cells, cell = nil, {}, nil
+          row_number = nil
           cell_type  = nil
           cell_style_idx = nil
           @book.files.file.open(path) do |xml|
@@ -90,23 +92,26 @@ module Creek
                 case node.node_type
                 when opener then
                   row = node.attributes
-                  row['cells'] = Hash.new
-                  cells = Hash.new
+                  row_number = row[ROW_NUMBER]
+                  if spans = row['spans']
+                    spans = spans.split(":").last.to_i - 1
+                  else
+                    spans = 0
+                  end
+                  cells = Array.new(spans)
+                  row['cells'] = cells
                   y << (include_meta_data ? row : cells) if node.self_closing?
                 when closer
-                  processed_cells = fill_in_empty_cells(cells, row['r'], cell)
-                  row['cells'] = processed_cells
-                  y << (include_meta_data ? row : processed_cells)
+                  y << (include_meta_data ? row : cells)
                 end
               elsif (node_name == CELL) && node.node_type == opener
                 attributes = node.attributes
                 cell_type      = attributes[CELL_TYPE]
                 cell_style_idx = attributes[STYLE_INDEX]
                 cell           = attributes[CELL_REF]
-
               elsif node_name == VALUE && node.node_type == opener
-                if !cell.nil?
-                  cells[cell] = convert(node.inner_xml, cell_type, cell_style_idx)
+                if cell
+                  cells[@excel_col_names[cell.sub(row_number, '')]] = convert(node.inner_xml, cell_type, cell_style_idx)
                 end
               end
             end
@@ -122,27 +127,6 @@ module Creek
 
     def converter_options
       @converter_options ||= {shared_strings: @book.shared_strings.dictionary}
-    end
-
-    ##
-    # The unzipped XML file does not contain any node for empty cells.
-    # Empty cells are being padded in using this function
-    def fill_in_empty_cells cells, row_number, last_col
-      new_cells = Hash.new
-      unless cells.empty?
-        last_col = last_col.gsub(row_number, '')
-        last_col_index = @excel_col_names[last_col]
-        [*(0..last_col_index)].each do |i|
-          col = col_name i
-          id = "#{col}#{row_number}"
-          unless cells.has_key? id
-              new_cells[id] = nil
-          else
-            new_cells[id] = cells[id]
-          end
-        end
-      end
-      new_cells
     end
   end
 end
