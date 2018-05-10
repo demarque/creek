@@ -3,6 +3,7 @@ require 'nokogiri'
 
 module Creek
   class Creek::Sheet
+    include Creek::Utils
 
     attr_reader :book,
                 :name,
@@ -21,13 +22,35 @@ module Creek
       @rid = rid
       @state = state
       @sheetfile = sheetfile
+      @images_present = false
 
       # An XLS file has only 256 columns, however, an XLSX or XLSM file can contain up to 16384 columns.
       # This function creates a hash with all valid XLSX column names and associated indices.
       @excel_col_names = Hash.new
-      (0...16384).each do |i|
-        @excel_col_names[col_name(i)] = i
+      ('A'..'XFD').each_with_index do |col_name, index|
+        @excel_col_names[col_name] = index
       end
+    end
+
+    ##
+    # Preloads images info (coordinates and paths) from related drawing.xml and drawing rels.
+    # Must be called before #rows method if you want to have images included.
+    # Returns self so you can chain the calls (sheet.with_images.rows).
+    def with_images
+      @drawingfile = extract_drawing_filepath
+      if @drawingfile
+        @drawing = Creek::Drawing.new(@book, @drawingfile.sub('..', 'xl'))
+        @images_present = @drawing.has_images?
+      end
+      self
+    end
+
+    ##
+    # Extracts images for a cell to a temporary folder.
+    # Returns array of Pathnames for the cell.
+    # Returns nil if images asre not found for the cell or images were not preloaded with #with_images.
+    def images_at(cell)
+      @drawing.images_at(cell) if @images_present
     end
 
     ##
@@ -45,21 +68,6 @@ module Creek
     end
 
     private
-    ##
-    # Returns valid Excel column name for a given column index.
-    # For example, returns "A" for 0, "B" for 1 and "AQ" for 42.
-    def col_name i
-      i += 1
-      result = ""
-      mapping = ('A'..'Z').to_a
-      while i > 0
-        mod = (i - 1) % 26
-        result += mapping[mod]
-        i = (i - mod) / 26
-      end
-
-      result.reverse
-    end
 
     CELL = 'c'.freeze
     ROW = 'row'.freeze
@@ -74,7 +82,7 @@ module Creek
     # Returns a hash per row that includes the cell ids and values.
     # Empty cells will be also included in the hash with a nil value.
     def rows_generator include_meta_data=false
-      path = "xl/#{@sheetfile}"
+      path = if @sheetfile.start_with? "/xl/" or @sheetfile.start_with? "xl/" then @sheetfile else "xl/#{@sheetfile}" end
       if @book.files.file.exist?(path)
         # SAX parsing, Each element in the stream comes through as two events:
         # one to open the element and one to close it.
@@ -131,7 +139,24 @@ module Creek
     end
 
     def converter_options
-      @converter_options ||= {shared_strings: @book.shared_strings.dictionary}
+      @converter_options ||= { shared_strings: @book.shared_strings.dictionary }
+    end
+
+    ##
+    # Find drawing filepath for the current sheet.
+    # Sheet xml contains drawing relationship ID.
+    # Sheet relationships xml contains drawing file's location.
+    def extract_drawing_filepath
+      # Read drawing relationship ID from the sheet.
+      sheet_filepath = "xl/#{@sheetfile}"
+      drawing = parse_xml(sheet_filepath).css('drawing').first
+      return if drawing.nil?
+
+      drawing_rid = drawing.attributes['id'].value
+
+      # Read sheet rels to find drawing file's location.
+      sheet_rels_filepath = expand_to_rels_path(sheet_filepath)
+      parse_xml(sheet_rels_filepath).css("Relationship[@Id='#{drawing_rid}']").first.attributes['Target'].value
     end
   end
 end

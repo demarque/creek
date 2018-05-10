@@ -1,3 +1,3 @@
 module Creek
-  VERSION = "1.1.1"
+  VERSION = "2.1"
 end

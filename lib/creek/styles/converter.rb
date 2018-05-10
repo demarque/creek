@@ -58,10 +58,8 @@ module Creek
           value
         when :fixnum
           value.to_i
-        when :float
+        when :float, :percentage
           value.to_f
-        when :percentage
-          value.to_f / 100
         when :date, :time, :date_time
           convert_date(value, options)
         when :bignum
@@ -76,7 +74,8 @@ module Creek
       # the trickiest. note that  all these formats can vary on
       # whether they actually contain a date, time, or datetime.
       def self.convert_date(value, options)
-        value                        = value.to_f
+        value = value.to_f
+
         Time.at(((value - DATE_SYSTEM_1900) * 86400).round)
       end
 
@@ -87,21 +86,6 @@ module Creek
           value.to_f
         end
       end
-
-      ## Returns the base_date from which to calculate dates.
-      # Defaults to 1900 (minus two days due to excel quirk), but use 1904 if
-      # it's set in the Workbook's workbookPr.
-      # http://msdn.microsoft.com/en-us/library/ff530155(v=office.12).aspx
-      def base_date
-        @base_date ||= begin
-          # return DATE_SYSTEM_1900 if xml.workbook == nil
-          # xml.workbook.xpath("//workbook/workbookPr[@date1904]").each do |workbookPr|
-          #   return DATE_SYSTEM_1904 if workbookPr["date1904"] =~ /true|1/i
-          # end
-          DATE_SYSTEM_1900
-        end
-      end
-
     end
   end
 end

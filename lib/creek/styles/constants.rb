@@ -1,5 +1,3 @@
-require 'date'
-
 module Creek
   class Styles
     module Constants
