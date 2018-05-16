@@ -60,8 +60,10 @@ module Creek
           value.to_i
         when :float, :percentage
           value.to_f
-        when :date, :time, :date_time
+        when :date
           convert_date(value, options)
+        when :time, :date_time
+          convert_datetime(value, options)
         when :bignum
           convert_bignum(value)
 
@@ -71,12 +73,17 @@ module Creek
         end
       end
 
-      # the trickiest. note that  all these formats can vary on
-      # whether they actually contain a date, time, or datetime.
       def self.convert_date(value, options)
-        value = value.to_f
+        date = base_date(options) + value.to_i
+        yyyy, mm, dd = date.strftime('%Y-%m-%d').split('-')
 
-        Time.at(((value - DATE_SYSTEM_1900) * 86400).round)
+        ::Date.new(yyyy.to_i, mm.to_i, dd.to_i)
+      end
+
+      def self.convert_datetime(value, options)
+        date = base_date(options) + value.to_f.round(6)
+
+        round_datetime(date.strftime('%Y-%m-%d %H:%M:%S.%N'))
       end
 
       def self.convert_bignum(value)
@@ -86,6 +93,18 @@ module Creek
           value.to_f
         end
       end
+
+      private
+
+        def self.base_date(options)
+          options.fetch(:base_date, Date.new(1899, 12, 30))
+        end
+
+        def self.round_datetime(datetime_string)
+          /(?<yyyy>\d+)-(?<mm>\d+)-(?<dd>\d+) (?<hh>\d+):(?<mi>\d+):(?<ss>\d+.\d+)/ =~ datetime_string
+
+          ::Time.new(yyyy.to_i, mm.to_i, dd.to_i, hh.to_i, mi.to_i, ss.to_r).round(0)
+        end
     end
   end
 end
