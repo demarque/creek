@@ -16,7 +16,7 @@ describe Creek::Styles::Converter do
 
     describe :date_time do
       it "works" do
-        expect(convert('41275', 'n', :date_time)).to eq(Time.new(2013,01,01))
+        expect(convert('41275', 'n', :date_time)).to eq(DateTime.new(2013,01,01))
       end
     end
   end

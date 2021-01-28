@@ -11,10 +11,17 @@ module Creek
                 :state,
                 :visible,
                 :rid,
-                :index
+                :index,
+                :headers
 
+    # An XLS file has only 256 columns, however, an XLSX or XLSM file can contain up to 16384 columns.
+    # This function creates a hash with all valid XLSX column names and associated indices.
+    # Note: load and memoize on demand
+    def self.column_indexes
+      @column_indexes ||= ('A'..'XFD').each_with_index.to_h.freeze
+    end
 
-    def initialize book, name, sheetid, state, visible, rid, sheetfile
+    def initialize(book, name, sheetid, state, visible, rid, sheetfile)
       @book = book
       @name = name
       @sheetid = sheetid
@@ -23,13 +30,10 @@ module Creek
       @state = state
       @sheetfile = sheetfile
       @images_present = false
+    end
 
-      # An XLS file has only 256 columns, however, an XLSX or XLSM file can contain up to 16384 columns.
-      # This function creates a hash with all valid XLSX column names and associated indices.
-      @excel_col_names = Hash.new
-      ('A'..'XFD').each_with_index do |col_name, index|
-        @excel_col_names[col_name] = index
-      end
+    def column_indexes
+      self.class.column_indexes
     end
 
     ##
@@ -56,15 +60,30 @@ module Creek
     ##
     # Provides an Enumerator that returns a hash representing each row.
     # The key of the hash is the Cell id and the value is the value of the cell.
-    def rows
-      rows_generator
+    def rows(headers: false, header_row_number: 1, metadata: false)
+      extract_headers(header_row_number) if headers
+
+      rows_generator(include_headers: headers, include_meta_data: metadata)
     end
 
     ##
     # Provides an Enumerator that returns a hash representing each row.
     # The hash contains meta data of the row and a 'cells' embended hash which contains the cell contents.
-    def rows_with_meta_data
-      rows_generator true
+    def rows_with_meta_data(headers: false, header_row_number: 1)
+      rows(headers: headers, header_row_number: header_row_number, metadata: true)
+    end
+
+    # Parses the file until the header row is reached.
+    # Returns the headers as an array.
+    def extract_headers(row_number = 1)
+      return @headers if defined?(@headers)
+
+      # Extracted row numbers are String, convert it here to facilite comparison
+      @header_row_number = row_number.to_s
+
+      rows_with_meta_data.each do |row|
+        return (@headers = row['cells'].any? && row['cells']) if @header_row_number == row['r']
+      end
     end
 
     private
@@ -79,58 +98,89 @@ module Creek
     TEXT = 't'.freeze
 
     ##
-    # Returns a hash per row that includes the cell ids and values.
-    # Empty cells will be also included in the hash with a nil value.
-    def rows_generator include_meta_data=false
-      path = if @sheetfile.start_with? "/xl/" or @sheetfile.start_with? "xl/" then @sheetfile else "xl/#{@sheetfile}" end
+    # Returns an array or hash (with headers as key) per row that includes the cell ids and values.
+    # Empty cells will be also included with a nil value.
+    def rows_generator(include_meta_data: false, include_headers: false)
+      path =
+        if @sheetfile.start_with?("/xl/") || @sheetfile.start_with?("xl/")
+          @sheetfile
+        else
+          "xl/#{@sheetfile}"
+        end
+
       if @book.files.file.exist?(path)
         # SAX parsing, Each element in the stream comes through as two events:
         # one to open the element and one to close it.
         opener = Nokogiri::XML::Reader::TYPE_ELEMENT
         closer = Nokogiri::XML::Reader::TYPE_END_ELEMENT
+
         Enumerator.new do |y|
-          row, cells, cell = nil, {}, nil
+          row, cells, cell = nil, [], nil
           row_number = nil
           cell_type  = nil
           cell_style_idx = nil
+
           @book.files.file.open(path) do |xml|
             Nokogiri::XML::Reader.from_io(xml).each do |node|
               node_name = node.name
-              next unless node_name == CELL || node_name == ROW || node_name == VALUE || node_name == TEXT
+              next if node.node_type != opener && node_name != ROW
+
               if node_name == ROW
                 case node.node_type
-                when opener then
+                when opener
                   row = node.attributes
                   row_number = row[ROW_NUMBER]
-                  if spans = row['spans']
+
+                  if (spans = row['spans'])
                     spans = spans.split(":").last.to_i - 1
                   else
                     spans = 0
                   end
+
                   cells = Array.new(spans)
-                  row['cells'] = cells
-                  y << (include_meta_data ? row : cells) if node.self_closing?
+
+                  if node.self_closing?
+                    y << to_formatted_row(row, cells, include_meta_data, include_headers)
+                  end
                 when closer
-                  y << (include_meta_data ? row : cells)
+                  y << to_formatted_row(row, cells, include_meta_data, include_headers)
                 end
-              elsif (node_name == CELL) && node.node_type == opener
+              elsif node_name == CELL
                 attributes = node.attributes
                 cell_type      = attributes[CELL_TYPE]
                 cell_style_idx = attributes[STYLE_INDEX]
                 cell           = attributes[CELL_REF]
-              elsif node_name == VALUE && node.node_type == opener
+              elsif node_name == VALUE
                 if cell
-                  cells[@excel_col_names[cell.sub(row_number, '')]] = convert(node.inner_xml, cell_type, cell_style_idx)
+                  cells[column_indexes[cell.sub(row_number, '')]] = convert(node.inner_xml, cell_type, cell_style_idx)
                 end
-              elsif node_name == TEXT && node.node_type == opener
+              elsif node_name == TEXT
                 if cell
-                  cells[@excel_col_names[cell.sub(row_number, '')]] = convert(node.inner_xml, cell_type, cell_style_idx)
+                  cells[column_indexes[cell.sub(row_number, '')]] = convert(node.inner_xml, cell_type, cell_style_idx)
                 end
               end
             end
           end
         end
       end
+    end
+
+    def to_formatted_row(row, cells, include_meta_data, include_headers)
+      if include_headers
+        row['header_row'] = row[ROW_NUMBER] == @header_row_number
+        cells = cells_with_headers(cells) if @headers
+      end
+
+      if include_meta_data
+        row['cells'] = cells
+        row
+      else
+        cells
+      end
+    end
+
+    def cells_with_headers(cells)
+      cells.empty? ? {} : @headers.zip(cells).to_h
     end
 
     def convert(value, type, style_idx)

@@ -74,16 +74,11 @@ module Creek
       end
 
       def self.convert_date(value, options)
-        date = base_date(options) + value.to_i
-        yyyy, mm, dd = date.strftime('%Y-%m-%d').split('-')
-
-        ::Date.new(yyyy.to_i, mm.to_i, dd.to_i)
+        base_date(options) + value.to_i
       end
 
       def self.convert_datetime(value, options)
-        date = base_date(options) + value.to_f.round(6)
-
-        round_datetime(date.strftime('%Y-%m-%d %H:%M:%S.%N'))
+        base_date(options).to_datetime + value.to_f.round(6)
       end
 
       def self.convert_bignum(value)
@@ -94,17 +89,9 @@ module Creek
         end
       end
 
-      private
-
-        def self.base_date(options)
-          options.fetch(:base_date, Date.new(1899, 12, 30))
-        end
-
-        def self.round_datetime(datetime_string)
-          /(?<yyyy>\d+)-(?<mm>\d+)-(?<dd>\d+) (?<hh>\d+):(?<mi>\d+):(?<ss>\d+.\d+)/ =~ datetime_string
-
-          ::Time.new(yyyy.to_i, mm.to_i, dd.to_i, hh.to_i, mi.to_i, ss.to_r).round(0)
-        end
+      def self.base_date(options)
+        options.fetch(:base_date, Date.new(1899, 12, 30))
+      end
     end
   end
 end
