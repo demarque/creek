@@ -78,7 +78,7 @@ module Creek
     def extract_headers(row_number = 1)
       return @headers if defined?(@headers)
 
-      # Extracted row numbers are String, convert it here to facilite comparison
+      # Extracted row numbers are String, convert it here to facilitate comparison
       @header_row_number = row_number.to_s
 
       rows_with_meta_data.each do |row|
