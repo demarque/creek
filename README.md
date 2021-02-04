@@ -51,12 +51,14 @@ sheet.rid     # => 'rId2'
 the rows as hash with the headers as keys. Also, a `header_row` boolean is added to the row metadata.
 See examples above.
 
-Headers (as an array) are loaded once by parsing the file a first time until the `header_row_number` is reached.
+Headers (as an array or nil if empty) are loaded once by parsing the file a first time until the `header_row_number` is reached.
 Rows are then returned normally as an Enumerator as usual (new Enumerator instance starting from the beginning of the file, that will include header row as well). It's the caller's responsibility to filter the header row as needed.
 
 `extract_headers` can also be called manually from the sheet instance.
 Once extracted, the headers can be accessed through the `headers` attr_reader.
 As headers are matched to their respective value in the row by index, it's possible to modifies the array in `headers` to customize the headers (to fix typo, make them unique, etc.).
+
+Empty header row returns `nil` and the rows are then returned as an array (same as calling `rows(headers: false)`).
 
 ```ruby
 creek = Creek::Book.new 'spec/fixtures/sample.xlsx'

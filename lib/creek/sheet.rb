@@ -74,7 +74,7 @@ module Creek
     end
 
     # Parses the file until the header row is reached.
-    # Returns the headers as an array.
+    # Returns the headers as an array, or nil if the headers are empty.
     def extract_headers(row_number = 1)
       return @headers if defined?(@headers)
 
@@ -82,7 +82,10 @@ module Creek
       @header_row_number = row_number.to_s
 
       rows_with_meta_data.each do |row|
-        return (@headers = row['cells'].any? && row['cells']) if @header_row_number == row['r']
+        if @header_row_number == row['r']
+          @headers = row['cells'] if row['cells'].any?
+          return @headers
+        end
       end
     end
 
