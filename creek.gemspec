@@ -28,5 +28,4 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency 'nokogiri', '>= 1.7.0'
   spec.add_dependency 'rubyzip', '>= 1.0.0'
-  spec.add_dependency 'httparty', '~> 0.15.5'
 end

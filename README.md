@@ -26,16 +26,66 @@ creek = Creek::Book.new 'spec/fixtures/sample.xlsx'
 sheet = creek.sheets[0]
 
 sheet.rows.each do |row|
-  puts row # => {"A1"=>"Content 1", "B1"=>nil, C1"=>nil, "D1"=>"Content 3"}
+  puts row # => ["Content 1", nil, nil, "Content 3"]
+end
+
+sheet.rows(headers: true).each do |row|
+  puts row # => { 'header1' => "Content 1", 'header2' => nil, 'header3' => nil, 'header4' => "Content 3" }
 end
 
 sheet.rows_with_meta_data.each do |row|
-  puts row # => {"collapsed"=>"false", "customFormat"=>"false", "customHeight"=>"true", "hidden"=>"false", "ht"=>"12.1", "outlineLevel"=>"0", "r"=>"1", "cells"=>{"A1"=>"Content 1", "B1"=>nil, C1"=>nil, "D1"=>"Content 3"}}
+  puts row # => {"collapsed"=>"false", "customFormat"=>"false", "customHeight"=>"true", "hidden"=>"false", "ht"=>"12.1", "outlineLevel"=>"0", "r"=>"1", "header_row" => false, "cells"=>["Content 1", nil, nil, "Content 3"]}
+end
+
+sheet.rows_with_meta_data(headers: true).each do |row|
+  puts row # => {"collapsed"=>"false", "customFormat"=>"false", "customHeight"=>"true", "hidden"=>"false", "ht"=>"12.1", "outlineLevel"=>"0", "r"=>"1", "header_row" => false, "cells"=>{ 'header1' => "Content 1", 'header2' => nil, 'header3' => nil, 'header4' => "Content 3" }}
 end
 
 sheet.state   # => 'visible'
 sheet.name    # => 'Sheet1'
 sheet.rid     # => 'rId2'
+```
+
+## Headers
+`rows` and `rows_with_meta_data` both accept the kwargs `headers` and `header_row_number` to load
+the rows as hash with the headers as keys. Also, a `header_row` boolean is added to the row metadata.
+See examples above.
+
+Headers (as an array or nil if empty) are loaded once by parsing the file a first time until the `header_row_number` is reached.
+Rows are then returned normally as an Enumerator as usual (new Enumerator instance starting from the beginning of the file, that will include header row as well). It's the caller's responsibility to filter the header row as needed.
+
+`extract_headers` can also be called manually from the sheet instance.
+Once extracted, the headers can be accessed through the `headers` attr_reader.
+As headers are matched to their respective value in the row by index, it's possible to modifies the array in `headers` to customize the headers (to fix typo, make them unique, etc.).
+
+Empty header row returns `nil` and the rows are then returned as an array (same as calling `rows(headers: false)`).
+
+```ruby
+creek = Creek::Book.new 'spec/fixtures/sample.xlsx'
+sheet = creek.sheets[0]
+
+# Parse the file up to row 3 (file starts at row 1)
+sheet.extract_headers(3)
+# => ['Header1', 'Other Header', 'More header']
+
+sheet.headers
+# => ['Header1', 'Other Header', 'More header']
+
+# Headers can be modified before parsing the file to customize them
+sheet.headers[0] = 'A better Header'
+sheet.headers
+# => ['A better Header', 'Other Header', 'More header']
+
+# Parse the rows as hashes, including the (modified) headers
+sheet.rows(headers: true).each do |row|
+  puts row # => { 'A better Header' => "Content 1", 'Other Header' => nil, 'More header' => nil }
+end
+
+# Or both can be done directly when accessing rows
+sheet2 = creek.sheets[1]
+sheet2.rows(headers: true, header_row_number: 3).each do |row|
+  puts row # => { 'Header1' => "Content 2", 'Other Header' => nil, 'More header' => nil }
+end
 ```
 
 ## Filename considerations
@@ -81,13 +131,6 @@ puts sheet.images_at('C1') # => nil
 ```
 
 Creek will most likely return nil for a cell with images if there is no other text cell in that row - you can use *images_at* method for retrieving images in that cell.
-
-## Remote files
-
-```ruby
-remote_url = 'http://dev-builds.libreoffice.org/tmp/test.xlsx'
-Creek::Book.new remote_url, remote: true
-```
 
 ## Contributing
 

@@ -24,7 +24,7 @@ module Creek
             when Nokogiri::XML::Reader::TYPE_ELEMENT
               case node.name
               when 'si' then
-                str = ''
+                str = ''.dup
               when 't' then
                 buffer = true
               end
@@ -46,4 +46,3 @@ module Creek
     end
   end
 end
-
